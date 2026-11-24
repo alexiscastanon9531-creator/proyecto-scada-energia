@@ -1,0 +1,804 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SCADA EnergySort — Monitoreo y Ordenamiento</title>
+<style>
+  :root {
+    --bg-dark: #090e1a;
+    --panel-bg: #111827;
+    --border: #24324d;
+    --text-main: #f8fafc;
+    --text-muted: #94a3b8;
+    --accent-cyan: #06b6d4;
+    --accent-amber: #f59e0b;
+    --accent-purple: #a855f7;
+    --accent-red: #ef4444;
+    --accent-green: #10b981;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', system-ui, sans-serif; }
+  
+  body {
+    background-color: var(--bg-dark);
+    color: var(--text-main);
+    padding: 18px;
+    min-height: 100vh;
+  }
+
+  header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: var(--panel-bg);
+    padding: 16px 24px;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+    gap: 15px;
+  }
+
+  .title-box h1 { font-size: 1.35rem; color: var(--accent-cyan); }
+  .title-box p { font-size: 0.88rem; color: var(--text-muted); margin-top: 3px; }
+
+  .mode-tabs { display: flex; gap: 10px; }
+  .tab-btn {
+    padding: 10px 18px;
+    border: 1px solid var(--border);
+    background: #1e293b;
+    color: var(--text-muted);
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 0.9rem;
+    transition: all 0.2s;
+  }
+  .tab-btn.active {
+    background: var(--accent-cyan);
+    color: #06121e;
+    border-color: var(--accent-cyan);
+    box-shadow: 0 0 15px rgba(6, 182, 212, 0.35);
+  }
+
+  /* Barra de Controles */
+  .controls-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+    background: var(--panel-bg);
+    padding: 14px 20px;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    margin-bottom: 16px;
+  }
+
+  button.ctrl {
+    padding: 9px 15px;
+    border: none;
+    border-radius: 7px;
+    font-weight: 600;
+    font-size: 0.88rem;
+    cursor: pointer;
+    transition: transform 0.1s, opacity 0.2s;
+  }
+  button.ctrl:active { transform: scale(0.97); }
+  button.ctrl:disabled { opacity: 0.35; cursor: not-allowed; }
+  
+  .btn-load { background: #334155; color: white; }
+  .btn-run { background: var(--accent-green); color: #022c22; }
+  .btn-step { background: #3b82f6; color: white; }
+  .btn-pause { background: var(--accent-amber); color: #451a03; }
+
+  .slider-group {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    margin-left: auto;
+  }
+
+  /* Contexto Operativo + Esquema Físico */
+  .context-banner {
+    display: grid;
+    grid-template-columns: 1.4fr 1fr;
+    gap: 16px;
+    background: var(--panel-bg);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px 20px;
+    margin-bottom: 16px;
+  }
+  @media (max-width: 850px) { .context-banner { grid-template-columns: 1fr; } }
+
+  .context-info h2 { font-size: 1.05rem; color: #f1f5f9; margin-bottom: 6px; }
+  .context-info p { font-size: 0.88rem; color: #cbd5e1; line-height: 1.45; }
+  .badge-algo {
+    display: inline-block;
+    background: rgba(6, 182, 212, 0.15);
+    color: var(--accent-cyan);
+    border: 1px solid rgba(6, 182, 212, 0.4);
+    padding: 2px 8px;
+    border-radius: 5px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    margin-bottom: 6px;
+  }
+
+  .plant-diagram {
+    background: #0b1222;
+    border: 1px solid #1e293b;
+    border-radius: 10px;
+    padding: 12px 16px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
+  .plant-title { font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); margin-bottom: 10px; letter-spacing: 0.5px; }
+  
+  .pipe-network {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: relative;
+  }
+  .pipe-line {
+    position: absolute;
+    top: 50%;
+    left: 10%;
+    right: 10%;
+    height: 6px;
+    background: #1e293b;
+    z-index: 0;
+    border-radius: 3px;
+  }
+  .zone-node {
+    position: relative;
+    z-index: 1;
+    background: #162033;
+    border: 2px solid #334155;
+    border-radius: 8px;
+    padding: 8px 10px;
+    text-align: center;
+    width: 23%;
+    transition: all 0.2s;
+  }
+  .zone-node.active-zone {
+    border-color: var(--accent-amber);
+    background: rgba(245, 158, 11, 0.15);
+    box-shadow: 0 0 12px rgba(245, 158, 11, 0.3);
+  }
+  .zone-node.alert-zone {
+    border-color: var(--accent-red);
+    background: rgba(239, 68, 68, 0.18);
+  }
+  .zone-node strong { display: block; font-size: 0.8rem; color: white; }
+  .zone-node span { font-size: 0.7rem; color: var(--text-muted); }
+
+  /* Panel de Métricas */
+  .metrics-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+
+  .metric-card {
+    background: var(--panel-bg);
+    border: 1px solid var(--border);
+    padding: 14px 16px;
+    border-radius: 10px;
+  }
+  .metric-card span { font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; font-weight: 600; }
+  .metric-card h2 { font-size: 1.5rem; margin-top: 4px; font-variant-numeric: tabular-nums; }
+  .metric-card small { font-size: 0.75rem; color: var(--text-muted); }
+
+  /* Escenario de Barras */
+  .stage-container {
+    background: var(--panel-bg);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 18px;
+  }
+
+  .legend {
+    display: flex;
+    gap: 16px;
+    font-size: 0.82rem;
+    flex-wrap: wrap;
+    margin-bottom: 14px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--border);
+  }
+  .legend-item { display: flex; align-items: center; gap: 6px; color: #e2e8f0; }
+  .dot { width: 13px; height: 13px; border-radius: 3px; }
+
+  .bars-wrapper {
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    gap: 8px;
+    height: 290px;
+    padding: 28px 12px 42px 12px;
+    background: #070b14;
+    border-radius: 8px;
+    border: 1px solid #1e293b;
+    position: relative;
+  }
+
+  .threshold-line {
+    position: absolute;
+    left: 0;
+    right: 0;
+    border-top: 2px dashed var(--accent-red);
+    pointer-events: none;
+    display: none;
+    z-index: 5;
+  }
+  .threshold-label {
+    position: absolute;
+    right: 12px;
+    top: -22px;
+    background: var(--accent-red);
+    color: white;
+    font-size: 0.72rem;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-weight: bold;
+  }
+
+  .sensor-bar {
+    flex: 1;
+    max-width: 54px;
+    background: var(--accent-cyan);
+    border-radius: 5px 5px 0 0;
+    position: relative;
+    transition: height 0.18s ease, background-color 0.15s ease, transform 0.15s ease;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    align-items: center;
+  }
+
+  .sensor-val {
+    position: absolute;
+    top: -22px;
+    font-size: 0.74rem;
+    font-weight: 700;
+    color: #f8fafc;
+    white-space: nowrap;
+  }
+
+  .sensor-id {
+    position: absolute;
+    bottom: -22px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: #cbd5e1;
+    white-space: nowrap;
+  }
+
+  .sensor-sub {
+    position: absolute;
+    bottom: -36px;
+    font-size: 0.62rem;
+    color: #64748b;
+    white-space: nowrap;
+  }
+
+  .state-compare {
+    background: var(--accent-amber) !important;
+    box-shadow: 0 0 15px rgba(245, 158, 11, 0.6);
+    transform: translateY(-4px);
+  }
+  .state-swap {
+    background: var(--accent-red) !important;
+    box-shadow: 0 0 16px rgba(239, 68, 68, 0.7);
+    transform: translateY(-6px);
+  }
+  .state-pivot {
+    background: var(--accent-purple) !important;
+    box-shadow: 0 0 16px rgba(168, 85, 247, 0.75);
+  }
+  .state-sorted { background: var(--accent-green) !important; }
+  .state-peak { border-top: 4px solid #fca5a5; }
+
+  .narrator-box {
+    margin-top: 14px;
+    padding: 14px 16px;
+    background: #0c1426;
+    border-radius: 8px;
+    font-size: 0.92rem;
+    color: #e0f2fe;
+    border-left: 4px solid var(--accent-cyan);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .narrator-tag {
+    background: var(--accent-cyan);
+    color: #082f49;
+    font-weight: 800;
+    font-size: 0.72rem;
+    padding: 3px 8px;
+    border-radius: 4px;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="title-box">
+    <h1>⚡ SCADA EnergySort — Monitoreo y Ordenamiento</h1>
+    <p>Sistema de procesamiento de telemetría energética (Base lógica en C)</p>
+  </div>
+  <div class="mode-tabs">
+    <button class="tab-btn active" id="tabShell" onclick="switchMode('shell')">1. Shellsort (Tuberías PSI)</button>
+    <button class="tab-btn" id="tabQuick" onclick="switchMode('quick')">2. QuickSort (Demanda MW)</button>
+  </div>
+</header>
+
+<div class="controls-bar">
+  <button class="ctrl btn-load" id="btnLoad" onclick="loadData()">🔄 Cargar Datos del Problema</button>
+  <button class="ctrl btn-run" id="btnRun" onclick="startSort(false)">▶ Ejecutar Ordenamiento</button>
+  <button class="ctrl btn-step" id="btnStep" onclick="handleStepButton()">⏭ Paso Siguiente</button>
+  <button class="ctrl btn-pause" id="btnPause" onclick="togglePause()" disabled>⏸ Pausar</button>
+
+  <div class="slider-group">
+    <label for="sizeSelect">Muestreo:</label>
+    <select id="sizeSelect" onchange="loadData()" style="background:#1e293b;color:white;border:1px solid #334155;padding:6px;border-radius:6px;">
+      <option value="8">8 sensores</option>
+      <option value="12" selected>12 sensores</option>
+      <option value="18">18 sensores</option>
+    </select>
+
+    <label for="speedRange" style="margin-left:8px;">Velocidad:</label>
+    <input type="range" id="speedRange" min="40" max="800" value="350" style="direction: rtl;">
+  </div>
+</div>
+
+<div class="context-banner">
+  <div class="context-info">
+    <span class="badge-algo" id="badgeAlgo">SHELLSORT • ORDENAMIENTO POR INTERVALOS (GAPS)</span>
+    <h2 id="scenarioTitle">Monitoreo de Presión en Tuberías Industriales (PSI)</h2>
+    <p id="scenarioDesc">
+      Agrupación y ordenamiento de lecturas de presión espaciadas en distintas zonas de la planta térmica mediante saltos (gaps) decrecientes para estabilizar la red.
+    </p>
+  </div>
+
+  <div class="plant-diagram">
+    <div class="plant-title" id="diagramTitle">Red de Tuberías por Zonas de Planta</div>
+    <div class="pipe-network" id="plantNodes"></div>
+  </div>
+</div>
+
+<div class="metrics-grid">
+  <div class="metric-card">
+    <span>Comparaciones</span>
+    <h2 id="mComp" style="color: var(--accent-amber);">0</h2>
+    <small>Evaluaciones entre sensores</small>
+  </div>
+  <div class="metric-card">
+    <span>Intercambios / Swaps</span>
+    <h2 id="mSwap" style="color: var(--accent-red);">0</h2>
+    <small>Desplazamientos realizados</small>
+  </div>
+  <div class="metric-card">
+    <span>Tiempo de Ejecución</span>
+    <h2 id="mTime" style="color: var(--accent-cyan);">0.0000 ms</h2>
+    <small>Procesamiento puro en memoria</small>
+  </div>
+  <div class="metric-card">
+    <span id="mExtraLabel">Salto Actual (Gap)</span>
+    <h2 id="mExtraVal" style="color: var(--accent-purple);">—</h2>
+    <small id="mExtraSub">Intervalo entre nodos comparados</small>
+  </div>
+</div>
+
+<div class="stage-container">
+  <div class="legend">
+    <div class="legend-item"><div class="dot" style="background:var(--accent-cyan)"></div> Lectura en espera</div>
+    <div class="legend-item"><div class="dot" style="background:var(--accent-amber)"></div> Comparando</div>
+    <div class="legend-item"><div class="dot" style="background:var(--accent-red)"></div> Intercambiando</div>
+    <div class="legend-item" id="legendPivot" style="display:none;"><div class="dot" style="background:var(--accent-purple)"></div> Pivote QuickSort</div>
+    <div class="legend-item"><div class="dot" style="background:var(--accent-green)"></div> Ordenado</div>
+  </div>
+
+  <div class="bars-wrapper" id="barsContainer">
+    <div class="threshold-line" id="thresholdLine" style="bottom: 222px;">
+      <span class="threshold-label">⚠ Umbral Pico Crítico: 80 MW</span>
+    </div>
+  </div>
+
+  <div class="narrator-box">
+    <span class="narrator-tag" id="narratorTag">EN ESPERA</span>
+    <span id="statusLog">Sistema listo. Seleccione <b>"Ejecutar Ordenamiento"</b> o <b>"Paso Siguiente"</b> para iniciar el procesamiento.</span>
+  </div>
+</div>
+
+<script>
+  let currentMode = 'shell';
+  let data = [];
+  let isRunning = false;
+  let isPaused = false;
+  let stepMode = false;
+  let resolveStep = null;
+  let abortController = false;
+
+  let comparisons = 0;
+  let swaps = 0;
+
+  const shellZones = [
+    { id: 'Z1', name: 'Zona 1', sub: 'Caldera' },
+    { id: 'Z2', name: 'Zona 2', sub: 'Turbina' },
+    { id: 'Z3', name: 'Zona 3', sub: 'Condensador' },
+    { id: 'Z4', name: 'Zona 4', sub: 'Retorno' }
+  ];
+
+  const quickSubstations = [
+    { id: 'SUB-A', name: 'Subestación A', sub: 'Industrial' },
+    { id: 'SUB-B', name: 'Subestación B', sub: 'Urbana' },
+    { id: 'SUB-C', name: 'Subestación C', sub: 'Parque Solar' },
+    { id: 'SUB-D', name: 'Subestación D', sub: 'Hospitales' }
+  ];
+
+  function renderPlantDiagram(activeIndices = []) {
+    const container = document.getElementById('plantNodes');
+    const items = currentMode === 'shell' ? shellZones : quickSubstations;
+    
+    const activeZones = new Set();
+    activeIndices.forEach(idx => {
+      if (data[idx]) activeZones.add(data[idx].zoneIdx);
+    });
+
+    let html = '<div class="pipe-line"></div>';
+    items.forEach((z, idx) => {
+      const isActive = activeZones.has(idx);
+      const hasPeak = currentMode === 'quick' && data.some(d => d.zoneIdx === idx && d.value > 80);
+      let cls = 'zone-node';
+      if (isActive) cls += ' active-zone';
+      else if (hasPeak) cls += ' alert-zone';
+
+      html += `
+        <div class="${cls}">
+          <strong>${z.name}</strong>
+          <span>${z.sub}</span>
+        </div>
+      `;
+    });
+    container.innerHTML = html;
+  }
+
+  function switchMode(mode) {
+    if (isRunning) {
+      abortController = true;
+      if (resolveStep) resolveStep();
+    }
+    currentMode = mode;
+
+    document.getElementById('tabShell').classList.toggle('active', mode === 'shell');
+    document.getElementById('tabQuick').classList.toggle('active', mode === 'quick');
+
+    if (mode === 'shell') {
+      document.getElementById('badgeAlgo').innerText = "SHELLSORT • ORDENAMIENTO POR INTERVALOS (GAPS)";
+      document.getElementById('scenarioTitle').innerText = "Monitoreo de Presión en Tuberías Industriales (PSI)";
+      document.getElementById('scenarioDesc').innerHTML = "Agrupación y ordenamiento de lecturas de presión espaciadas en distintas zonas de la planta térmica mediante saltos (gaps) decrecientes para estabilizar la red.";
+      document.getElementById('diagramTitle').innerText = "Red de Tuberías por Zonas de Planta";
+      document.getElementById('mExtraLabel').innerText = "Salto Actual (Gap)";
+      document.getElementById('mExtraSub').innerText = "Intervalo entre nodos comparados";
+      document.getElementById('legendPivot').style.display = 'none';
+      document.getElementById('thresholdLine').style.display = 'none';
+    } else {
+      document.getElementById('badgeAlgo').innerText = "QUICKSORT • PARTICIÓN POR PIVOTE EN TIEMPO REAL";
+      document.getElementById('scenarioTitle').innerText = "Detección de Picos de Demanda Eléctrica (MW)";
+      document.getElementById('scenarioDesc').innerHTML = "Clasificación rápida de telemetría de consumo eléctrico mediante pivotes para aislar picos críticos superiores al umbral de 80 MW.";
+      document.getElementById('diagramTitle').innerText = "Subestaciones de Distribución Eléctrica";
+      document.getElementById('mExtraLabel').innerText = "Picos Críticos (>80 MW)";
+      document.getElementById('mExtraSub').innerText = "Nodos sobre el umbral";
+      document.getElementById('legendPivot').style.display = 'flex';
+      document.getElementById('thresholdLine').style.display = 'block';
+    }
+
+    setTimeout(() => {
+      abortController = false;
+      isRunning = false;
+      stepMode = false;
+      loadData();
+    }, 60);
+  }
+
+  function loadData() {
+    if (isRunning) return;
+    const count = parseInt(document.getElementById('sizeSelect').value);
+    data = [];
+    comparisons = 0;
+    swaps = 0;
+    updateMetrics(0, 0, "0.0000 ms", "—");
+
+    for (let i = 0; i < count; i++) {
+      const val = Math.floor(Math.random() * 81) + 20;
+      const zoneIdx = i % 4;
+      const zoneLabel = currentMode === 'shell' ? shellZones[zoneIdx].id : quickSubstations[zoneIdx].id;
+      data.push({
+        id: `S${i + 1}`,
+        zoneIdx: zoneIdx,
+        zoneLabel: zoneLabel,
+        value: val,
+        state: 'normal'
+      });
+    }
+
+    if (currentMode === 'quick') {
+      const peaks = data.filter(d => d.value > 80).length;
+      document.getElementById('mExtraVal').innerText = `${peaks} nodos`;
+    }
+
+    renderPlantDiagram();
+    renderBars();
+    setNarrator("EN ESPERA", `Se cargaron ${count} lecturas de sensores. Presione <b>"Ejecutar Ordenamiento"</b> o <b>"Paso Siguiente"</b>.`);
+  }
+
+  function renderBars() {
+    const container = document.getElementById('barsContainer');
+    const threshold = document.getElementById('thresholdLine');
+    container.innerHTML = '';
+    container.appendChild(threshold);
+
+    const unit = currentMode === 'shell' ? ' PSI' : ' MW';
+
+    data.forEach(item => {
+      const bar = document.createElement('div');
+      bar.className = 'sensor-bar';
+      if (item.state === 'compare') bar.classList.add('state-compare');
+      if (item.state === 'swap') bar.classList.add('state-swap');
+      if (item.state === 'pivot') bar.classList.add('state-pivot');
+      if (item.state === 'sorted') bar.classList.add('state-sorted');
+      if (currentMode === 'quick' && item.value > 80) bar.classList.add('state-peak');
+
+      bar.style.height = `${item.value * 2.25}px`;
+
+      bar.innerHTML = `
+        <span class="sensor-val">${item.value}${unit}</span>
+        <span class="sensor-id">${item.id}</span>
+        <span class="sensor-sub">${item.zoneLabel}</span>
+      `;
+      container.appendChild(bar);
+    });
+  }
+
+  function updateMetrics(comp, swp, timeStr, extra) {
+    document.getElementById('mComp').innerText = comp;
+    document.getElementById('mSwap').innerText = swp;
+    if (timeStr !== null) document.getElementById('mTime').innerText = timeStr;
+    if (extra !== null) document.getElementById('mExtraVal').innerText = extra;
+  }
+
+  function setNarrator(tag, htmlText) {
+    document.getElementById('narratorTag').innerText = tag;
+    document.getElementById('statusLog').innerHTML = htmlText;
+  }
+
+  function handleStepButton() {
+    if (!isRunning) {
+      startSort(true);
+    } else {
+      stepMode = true;
+      isPaused = false;
+      if (resolveStep) {
+        const fn = resolveStep;
+        resolveStep = null;
+        fn();
+      }
+    }
+  }
+
+  async function sleepStep() {
+    if (abortController) throw new Error("ABORT");
+
+    if (stepMode) {
+      await new Promise(r => { resolveStep = r; });
+      if (abortController) throw new Error("ABORT");
+      return;
+    }
+
+    while (isPaused && !abortController) {
+      await new Promise(r => setTimeout(r, 80));
+    }
+    if (abortController) throw new Error("ABORT");
+    const delay = parseInt(document.getElementById('speedRange').value);
+    await new Promise(r => setTimeout(r, delay));
+  }
+
+  function togglePause() {
+    stepMode = false;
+    isPaused = !isPaused;
+    document.getElementById('btnPause').innerText = isPaused ? "▶ Reanudar" : "⏸ Pausar";
+    if (!isPaused && resolveStep) {
+      const fn = resolveStep;
+      resolveStep = null;
+      fn();
+    }
+    setNarrator(isPaused ? "PAUSADO" : "EJECUTANDO", isPaused ? "Simulación en pausa." : "Procesando lecturas...");
+  }
+
+  function measurePureExecutionTime(arrCopy) {
+    const t0 = performance.now();
+    if (currentMode === 'shell') {
+      let n = arrCopy.length;
+      for (let gap = Math.floor(n / 2); gap > 0; gap = Math.floor(gap / 2)) {
+        for (let i = gap; i < n; i++) {
+          let temp = arrCopy[i], j = i;
+          while (j >= gap && arrCopy[j - gap] > temp) { arrCopy[j] = arrCopy[j - gap]; j -= gap; }
+          arrCopy[j] = temp;
+        }
+      }
+    } else {
+      const qs = (a, l, h) => {
+        if (l < h) {
+          let p = a[h], i = l - 1;
+          for (let j = l; j < h; j++) { if (a[j] < p) { i++; [a[i], a[j]] = [a[j], a[i]]; } }
+          [a[i + 1], a[h]] = [a[h], a[i + 1]];
+          let pi = i + 1; qs(a, l, pi - 1); qs(a, pi + 1, h);
+        }
+      };
+      qs(arrCopy, 0, arrCopy.length - 1);
+    }
+    const t1 = performance.now();
+    return (t1 - t0).toFixed(4) + " ms";
+  }
+
+  async function startSort(startInStepMode = false) {
+    if (isRunning) return;
+    isRunning = true;
+    isPaused = false;
+    stepMode = startInStepMode;
+    abortController = false;
+    comparisons = 0;
+    swaps = 0;
+
+    document.getElementById('btnRun').disabled = true;
+    document.getElementById('btnLoad').disabled = true;
+    document.getElementById('btnPause').disabled = false;
+
+    const pureTime = measurePureExecutionTime(data.map(d => d.value));
+
+    try {
+      if (currentMode === 'shell') {
+        await runShellSortVisual();
+      } else {
+        await runQuickSortVisual(0, data.length - 1);
+      }
+
+      data.forEach(d => d.state = 'sorted');
+      renderPlantDiagram();
+      renderBars();
+      updateMetrics(comparisons, swaps, pureTime, currentMode === 'shell' ? "0 (Completado)" : null);
+
+      if (currentMode === 'quick') {
+        const peaks = data.filter(d => d.value > 80).map(d => `<b>${d.id} (${d.value} MW)</b>`).join(', ');
+        setNarrator("FINALIZADO", `Ordenamiento completado. Picos críticos (>80 MW) aislados: ${peaks || 'Ninguno'}.`);
+      } else {
+        setNarrator("FINALIZADO", `Ordenamiento completado. Presiones de tuberías estabilizadas de menor a mayor (PSI).`);
+      }
+
+    } catch (e) {
+      if (e.message !== "ABORT") console.error(e);
+    } finally {
+      isRunning = false;
+      stepMode = false;
+      document.getElementById('btnRun').disabled = false;
+      document.getElementById('btnLoad').disabled = false;
+      document.getElementById('btnPause').disabled = true;
+      document.getElementById('btnPause').innerText = "⏸ Pausar";
+    }
+  }
+
+  async function runShellSortVisual() {
+    let n = data.length;
+    for (let gap = Math.floor(n / 2); gap > 0; gap = Math.floor(gap / 2)) {
+      updateMetrics(comparisons, swaps, null, `${gap} posiciones`);
+
+      for (let i = gap; i < n; i++) {
+        let temp = { ...data[i] };
+        let j = i;
+
+        while (j >= gap) {
+          comparisons++;
+          data[j].state = 'compare';
+          data[j - gap].state = 'compare';
+          renderPlantDiagram([j, j - gap]);
+          renderBars();
+          updateMetrics(comparisons, swaps, null, `${gap} posiciones`);
+          
+          setNarrator("COMPARANDO", `Salto (Gap) = <b>${gap}</b>: Evaluando <b>${data[j - gap].id} (${data[j - gap].value} PSI)</b> vs <b>${temp.id} (${temp.value} PSI)</b>.`);
+          await sleepStep();
+
+          if (data[j - gap].value > temp.value) {
+            setNarrator("DESPLAZANDO", `<b>${data[j - gap].value} PSI > ${temp.value} PSI</b>: Desplazando lectura <b>${data[j - gap].id}</b>.`);
+            data[j] = { ...data[j - gap], state: 'swap' };
+            swaps++;
+            renderBars();
+            await sleepStep();
+            data[j].state = 'normal';
+            data[j - gap].state = 'normal';
+            j -= gap;
+          } else {
+            setNarrator("SIN CAMBIO", `<b>${data[j - gap].value} PSI ≤ ${temp.value} PSI</b>: Orden relativo correcto.`);
+            data[j].state = 'normal';
+            data[j - gap].state = 'normal';
+            break;
+          }
+        }
+        data[j] = { ...temp, state: 'normal' };
+        swaps++;
+        renderBars();
+      }
+    }
+  }
+
+  async function runQuickSortVisual(low, high) {
+    if (low < high) {
+      let pi = await partitionVisual(low, high);
+      data[pi].state = 'sorted';
+      renderBars();
+      await runQuickSortVisual(low, pi - 1);
+      await runQuickSortVisual(pi + 1, high);
+    } else if (low >= 0 && low < data.length) {
+      data[low].state = 'sorted';
+      renderBars();
+    }
+  }
+
+  async function partitionVisual(low, high) {
+    let pivotVal = data[high].value;
+    data[high].state = 'pivot';
+    renderPlantDiagram([high]);
+    renderBars();
+    setNarrator("PIVOTE", `Pivote de referencia: <b>${data[high].id} (${pivotVal} MW)</b>.`);
+    await sleepStep();
+
+    let i = low - 1;
+    for (let j = low; j <= high - 1; j++) {
+      comparisons++;
+      data[j].state = 'compare';
+      updateMetrics(comparisons, swaps, null, null);
+      renderPlantDiagram([j, high]);
+      renderBars();
+      setNarrator("COMPARANDO", `Evaluando <b>${data[j].id} (${data[j].value} MW)</b> contra pivote (<b>${pivotVal} MW</b>).`);
+      await sleepStep();
+
+      if (data[j].value < pivotVal) {
+        i++;
+        [data[i], data[j]] = [data[j], data[i]];
+        data[i].state = 'swap';
+        data[j].state = 'swap';
+        swaps++;
+        updateMetrics(comparisons, swaps, null, null);
+        renderBars();
+        setNarrator("INTERCAMBIANDO", `<b>${data[i].value} MW < ${pivotVal} MW</b>: Reubicando a la partición izquierda.`);
+        await sleepStep();
+        data[i].state = 'normal';
+      }
+      data[j].state = 'normal';
+    }
+
+    [data[i + 1], data[high]] = [data[high], data[i + 1]];
+    swaps++;
+    updateMetrics(comparisons, swaps, null, null);
+    data[high].state = 'normal';
+    renderBars();
+    setNarrator("PARTICIÓN LISTA", `Pivote <b>${pivotVal} MW</b> fijado en su posición definitiva.`);
+    await sleepStep();
+
+    return i + 1;
+  }
+
+  loadData();
+</script>
+</body>
+</html>
